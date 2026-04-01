@@ -1,120 +1,136 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import heroImg from './assets/hero.png'
+import { useEffect, useState } from 'react'
+import {
+  extensionApi,
+  type PopupState,
+  type RuntimeMessage,
+} from './extension'
 import './App.css'
 
+const emptyState: PopupState = {
+  activeContext: null,
+  lastUpdatedAt: null,
+}
+
+function formatTimestamp(timestamp: number | null) {
+  if (!timestamp) {
+    return 'Waiting for a supported tab'
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+  }).format(timestamp)
+}
+
 function App() {
-  const [count, setCount] = useState(0)
+  const [state, setState] = useState<PopupState>(emptyState)
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    const chromeApi = extensionApi
+
+    if (!chromeApi) {
+      setIsLoading(false)
+      return
+    }
+
+    chromeApi.runtime.sendMessage(
+      { type: 'REQUEST_CONTEXT_SCRAPE' },
+      (response) => {
+        if (response) {
+          setState(response)
+        }
+        setIsLoading(false)
+      },
+    )
+
+    const handleMessage = (
+      message: RuntimeMessage,
+      _sender: { tab?: { id?: number } },
+      _sendResponse: (response?: PopupState) => void,
+    ) => {
+      if (message.type !== 'CONTEXT_UPDATED') {
+        return
+      }
+
+      setState({
+        activeContext: message.payload,
+        lastUpdatedAt: message.payload.capturedAt,
+      })
+      setIsLoading(false)
+    }
+
+    chromeApi.runtime.onMessage.addListener(handleMessage)
+
+    return () => {
+      chromeApi.runtime.onMessage.removeListener(handleMessage)
+    }
+  }, [])
+
+  const context = state.activeContext
+  const domainLabel = context?.hostname || 'No page detected'
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
+    <main className="popup-shell">
+      <section className="hero-card">
+        <div className="brand-row">
+          <div className="brand-mark" aria-hidden="true">
+            <span>d</span>
+            <span>b</span>
+          </div>
+          <div>
+            <p className="eyebrow">Decible</p>
+            <h1>Context Scraper</h1>
+          </div>
         </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
 
-      <div className="ticks"></div>
+        <p className="hero-copy">
+          Real-time browser metadata for your future vibe engine.
+        </p>
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
+        <div className="status-pill">
+          <span className={context ? 'status-dot live' : 'status-dot idle'} />
+          {isLoading ? 'Scanning active tab...' : formatTimestamp(state.lastUpdatedAt)}
         </div>
       </section>
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
+      <section className="context-card">
+        <div className="section-heading">
+          <p className="eyebrow">Active environment</p>
+          <strong>{domainLabel}</strong>
+        </div>
+
+        <div className="data-block">
+          <span className="label">Title</span>
+          <p>{context?.title || 'Open a normal website tab to begin scraping context.'}</p>
+        </div>
+
+        <div className="data-block">
+          <span className="label">Description</span>
+          <p>{context?.description || 'No meta description found on this page yet.'}</p>
+        </div>
+
+        <div className="data-block">
+          <span className="label">URL</span>
+          <p className="mono">{context?.url || 'Unavailable'}</p>
+        </div>
+      </section>
+
+      <section className="meta-grid">
+        <article className="mini-card">
+          <span className="label">Signals captured</span>
+          <strong>{context ? 3 : 0}</strong>
+          <p>Title, hostname, metadata</p>
+        </article>
+
+        <article className="mini-card">
+          <span className="label">Keywords</span>
+          <strong>{context?.keywords.length || 0}</strong>
+          <p>{context?.keywords.slice(0, 3).join(' / ') || 'Waiting for page tags'}</p>
+        </article>
+      </section>
+    </main>
   )
 }
 

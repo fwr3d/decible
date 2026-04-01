@@ -1,7 +1,8 @@
+import { crx } from '@crxjs/vite-plugin'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import manifest from './src/manifest'
 
-// https://vite.dev/config/
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), crx({ manifest })],
 })
